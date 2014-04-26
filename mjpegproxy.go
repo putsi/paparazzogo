@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT-style
 // licence that can be found in the LICENCE file.
 
-package paparazzo.go
+package paparazzo-go
 
 import (
 	"bytes"
