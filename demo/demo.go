@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/putsi/paparazzo.go"
+	"github.com/putsi/paparazzogo"
 	"time"
 )
 
