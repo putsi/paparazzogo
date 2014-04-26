@@ -7,17 +7,21 @@ import (
 
 func main() {
 
-	port := ":8080"
+	// Local server settings
+	imgPath := "/img.jpg"
+	addr := ":8080"
+	
+	// MJPEG-stream settings
 	user := ""
 	pass := ""
 	timeout := 5 * time.Second
 	mjpegStream := "http://westunioncam.studentaffairs.duke.edu/mjpg/video.mjpg"
-	imgPath := "/img.jpg"
-
+	
+	
 	mp := mjpegproxy.NewMjpegproxy()
 
 	mp.StartCrawling(mjpegStream, user, pass, timeout)
-	mp.Serve(imgPath, port)
+	mp.Serve(imgPath, addr)
 
 	block := make(chan bool)
 
