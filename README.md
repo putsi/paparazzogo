@@ -9,7 +9,7 @@ _A stalker of [IP cameras](http://en.wikipedia.org/wiki/IP_camera)_
 
 A high performance web proxy for serving [MJPG](http://en.wikipedia.org/wiki/Motion_JPEG) streams to the masses.
 
-IPCamera (1) <-> (1) Paparazzo.js (1) <-> (N) Users
+IPCamera (1) <-> (1) Paparazzo.go (1) <-> (N) Users
 
 ![Demo screenshot](https://github.com/wilhelmbot/Paparazzo.js/raw/master/mjpg_demo.gif "Streaming a VIVOTEK camera")
 
