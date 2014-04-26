@@ -1,0 +1,27 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+        "http://www.w3.org/TR/html4/strict.dtd">
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>Paparazzo.go Demo</title>
+                <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js" type="text/javascript"></script>
+                <script type="text/javascript">
+                        $(document).ready(function() {
+                                // Active camera will refresh every 2 seconds
+                                var TIMEOUT = 1000;
+                                var refreshInterval = setInterval(function() {
+                                        var random = Math.floor(Math.random() * Math.pow(2, 31));
+                                        $('img#camera').attr('src', 'http://127.0.0.1:8080/img.jpg?i=' + Math.random());
+                                }, TIMEOUT);
+                        });
+                </script>
+        </head>
+        <body>
+                <div>
+                        <h1>Paparazzo.go - Demo stream</h1>
+	<div>
+                <img src="" id="camera" alt="Loading image!">
+	</div>
+        </body>
+</html>
+
+
