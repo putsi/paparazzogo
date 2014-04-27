@@ -17,13 +17,16 @@ import (
 )
 
 type Mjpegproxy struct {
-	curImg      bytes.Buffer
-	curImgLock  sync.RWMutex
-	conChan     chan time.Time
-	running     bool
 	partbufsize int
 	imgbufsize  int
-	l           net.Listener
+
+	curImg     bytes.Buffer
+	curImgLock sync.RWMutex
+	conChan    chan time.Time
+	running    bool
+	l          net.Listener
+	writer     io.Writer
+	handler    http.Handler
 }
 
 func NewMjpegproxy() *Mjpegproxy {
@@ -37,7 +40,7 @@ func NewMjpegproxy() *Mjpegproxy {
 	return p
 }
 
-func (m *Mjpegproxy) handlerfunc(w http.ResponseWriter, req *http.Request) {
+func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	m.curImgLock.RLock()
 	w.Write(m.curImg.Bytes())
 	m.curImgLock.RUnlock()
@@ -46,27 +49,6 @@ func (m *Mjpegproxy) handlerfunc(w http.ResponseWriter, req *http.Request) {
 	case m.conChan <- time.Now():
 	default:
 	}
-}
-
-func (m *Mjpegproxy) serve(imgPath, laddr string) {
-	http.HandleFunc(imgPath, m.handlerfunc)
-	var err error
-	m.l, err = net.Listen("tcp", laddr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = http.Serve(m.l, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func (m *Mjpegproxy) Serve(imgPath, laddr string) {
-	go m.serve(imgPath, laddr)
-}
-
-func (m *Mjpegproxy) StopServing() {
-	m.l.Close()
 }
 
 func (m *Mjpegproxy) StopCrawling() {

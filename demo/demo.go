@@ -2,6 +2,8 @@ package main
 
 import (
 	"github.com/putsi/paparazzogo"
+	"log"
+	"net/http"
 	"time"
 )
 
@@ -17,15 +19,14 @@ func main() {
 	timeout := 5 * time.Second
 	mjpegStream := "http://westunioncam.studentaffairs.duke.edu/mjpg/video.mjpg"
 
-	mp := paparazzogo.NewMjpegproxy()
+	mjpegHandler := paparazzogo.NewMjpegproxy()
+	mjpegHandler.StartCrawling(mjpegStream, user, pass, timeout)
 
-	mp.StartCrawling(mjpegStream, user, pass, timeout)
-	mp.Serve(imgPath, addr)
+	http.Handle(imgPath, mjpegHandler)
+	log.Fatal(http.ListenAndServe(addr, nil))
 
 	block := make(chan bool)
-
 	// time.Sleep(time.Second * 30)
-	// mp.StopServing()
 	// mp.StopCrawling()
 	<-block
 
