@@ -105,13 +105,11 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			}
 			if response.StatusCode == 503 {
 				response.Body.Close()
-				response = nil
 				log.Println(response.Status)
 				continue
 			}
 			if response.StatusCode != 200 {
 				response.Body.Close()
-				response = nil
 				log.Fatalln("Got invalid response status: ", response.Status)
 			}
 			// Get boundary string from response and clean it up
@@ -137,10 +135,12 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 						}
 						log.Fatal(err)
 					}
+					img.Reset()
 					img.Write(buffer[0:amnt])
 				}
-				part.Close()
-				part = nil
+				if part != nil {
+					part.Close()
+				}
 				err = nil
 
 				if img.Len() > m.imgbufsize {
@@ -154,15 +154,13 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 					log.Fatal(err)
 				}
 				m.curImgLock.Unlock()
-				img.Reset()
+
 			}
 			response.Body.Close()
-			response = nil
 			reader.Close()
 		} else if response != nil {
 			{
 				response.Body.Close()
-				response = nil
 			}
 		}
 	}
