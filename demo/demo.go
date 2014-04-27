@@ -16,20 +16,21 @@ func main() {
 	// MJPEG-stream settings
 	user := ""
 	pass := ""
-        // If there is zero GET-requests for 5 seconds, mjpeg-streaming will be paused.
+	// If there is zero GET-requests for 5 seconds, mjpeg-stream will be closed.
+	// Streaming will be reopened after next request.
 	timeout := 5 * time.Second
 	mjpegStream := "http://westunioncam.studentaffairs.duke.edu/mjpg/video.mjpg"
 
 	mjpegHandler := paparazzogo.NewMjpegproxy()
-	mjpegHandler.StartCrawling(mjpegStream, user, pass, timeout)
+	mjpegHandler.OpenStream(mjpegStream, user, pass, timeout)
 
 	http.Handle(imgPath, mjpegHandler)
 	log.Fatal(http.ListenAndServe(addr, nil))
 
 	block := make(chan bool)
 	// time.Sleep(time.Second * 30)
-	// mp.StopCrawling()
-	// mp.StartCrawling(newMjpegstream, newUser, newPass, newTimeout)
+	// mp.CloseStream()
+	// mp.OpenStream(newMjpegstream, newUser, newPass, newTimeout)
 	<-block
 
 }

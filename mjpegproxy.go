@@ -2,6 +2,9 @@
 // Use of this source code is governed by a MIT-style
 // licence that can be found in the LICENCE file.
 
+/* Package paparazzogo implements a caching proxy for
+serving MJPEG-stream as JPG-images.
+*/
 package paparazzogo
 
 import (
@@ -16,6 +19,8 @@ import (
 	"time"
 )
 
+// A Mjpegproxy implements http.Handler	interface and generates
+// JPG-images from a MJPEG-stream.
 type Mjpegproxy struct {
 	partbufsize int
 	imgbufsize  int
@@ -29,37 +34,50 @@ type Mjpegproxy struct {
 	handler    http.Handler
 }
 
+// NewMjpegproxy returns a new Mjpegproxy with default buffer
+// sizes.
 func NewMjpegproxy() *Mjpegproxy {
 	p := &Mjpegproxy{
 		conChan: make(chan time.Time),
-		// Max MJPEG-frame part size 1Mb
+		// Max MJPEG-frame part size 1Mb.
 		partbufsize: 125000,
-		// Max MJPEG-frame size 5Mb
+		// Max MJPEG-frame size 5Mb.
 		imgbufsize: 625000,
 	}
 	return p
 }
 
+// ServeHTTP uses w to serve current last MJPEG-frame
+// as JPG. It also reopens MJPEG-stream
+// if it was closed by idle timeout.
 func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	m.curImgLock.RLock()
 	w.Write(m.curImg.Bytes())
 	m.curImgLock.RUnlock()
-	// Resume crawling when new connection
+
 	select {
 	case m.conChan <- time.Now():
 	default:
 	}
 }
 
-func (m *Mjpegproxy) StopCrawling() {
+// CloseStream stops and closes MJPEG-stream.
+func (m *Mjpegproxy) CloseStream() {
 	m.running = false
 }
 
-func (m *Mjpegproxy) StartCrawling(mjpegStream, user, pass string, timeout time.Duration) {
-	go m.startcrawling(mjpegStream, user, pass, timeout)
+// OpenStream creates a go-routine of openstream.
+func (m *Mjpegproxy) OpenStream(mjpegStream, user, pass string, timeout time.Duration) {
+	go m.openstream(mjpegStream, user, pass, timeout)
 }
 
-func (m *Mjpegproxy) startcrawling(mjpegStream, user, pass string, timeout time.Duration) {
+// OpenStream sends request to target and handles
+// response. It opens MJPEG-stream and received frame
+// to m.curImg. It closes stream if m.running is set
+// to false or if difference between current time and
+// lastconn (time of last request to ServeHTTP)
+// is bigger than timeout.
+func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Duration) {
 	m.running = true
 	client := new(http.Client)
 	request, err := http.NewRequest("GET", mjpegStream, nil)
@@ -70,11 +88,10 @@ func (m *Mjpegproxy) startcrawling(mjpegStream, user, pass string, timeout time.
 		log.Fatal(err)
 	}
 
-	var part *multipart.Part
-
 	buffer := make([]byte, m.partbufsize)
 	img := bytes.Buffer{}
 
+	var part *multipart.Part
 	var lastconn time.Time
 	var response *http.Response
 
@@ -91,7 +108,7 @@ func (m *Mjpegproxy) startcrawling(mjpegStream, user, pass string, timeout time.
 				continue
 			}
 			if response.StatusCode != 200 {
-				log.Fatalln("Got invalid response status: ",response.Status)
+				log.Fatalln("Got invalid response status: ", response.Status)
 			}
 			defer response.Body.Close()
 			// Get boundary string from response and clean it up
@@ -107,7 +124,7 @@ func (m *Mjpegproxy) startcrawling(mjpegStream, user, pass string, timeout time.
 				if err != nil {
 					log.Fatal(err)
 				}
-				// Get parts until EOF-error or running=false
+				// Get frame parts until err is EOF or running is false
 				for err == nil && m.running {
 					amnt := 0
 					amnt, err = part.Read(buffer)
@@ -131,8 +148,10 @@ func (m *Mjpegproxy) startcrawling(mjpegStream, user, pass string, timeout time.
 				m.curImgLock.Unlock()
 				img.Reset()
 			}
-		} else {
-			response.Body.Close()
+		} else if response != nil {
+			{
+				response.Body.Close()
+			}
 		}
 	}
 }

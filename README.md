@@ -29,7 +29,7 @@ IP cameras are slow devices that can't handle a regular amount of web traffic. S
 Usage
 -
 
-**See demo-folder for example.**
+**See demo-folder for examples.**
 
 See Also
 -
