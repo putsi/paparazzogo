@@ -35,7 +35,8 @@ func main() {
 
 	block := make(chan bool)
 	// time.Sleep(time.Second * 30)
-	// mp.StopCrawling()
+	// mjpegHandler2.StopCrawling()
+	// mjpegHandler2.startCrawling(newMjpegstream, newUser, newPass, newTimeout)
 	<-block
 
 }
