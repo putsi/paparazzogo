@@ -156,6 +156,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 				img.Reset()
 			}
 			response.Body.Close()
+			reader.Close()
 		} else if response != nil {
 			{
 				response.Body.Close()
