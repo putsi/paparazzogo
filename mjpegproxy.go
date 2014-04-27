@@ -104,10 +104,12 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 				continue
 			}
 			if response.StatusCode == 503 {
+				response.Close()
 				log.Println(response.Status)
 				continue
 			}
 			if response.StatusCode != 200 {
+				response.Close()
 				log.Fatalln("Got invalid response status: ", response.Status)
 			}
 			defer response.Body.Close()
@@ -129,8 +131,12 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 					amnt := 0
 					amnt, err = part.Read(buffer)
 					if err != nil && err.Error() != "EOF" {
+						if part != nil {
+							part.Close()
+						}
 						log.Fatal(err)
 					}
+					part.Close()
 					img.Write(buffer[0:amnt])
 				}
 				err = nil
