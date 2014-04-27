@@ -28,6 +28,7 @@ func main() {
 	block := make(chan bool)
 	// time.Sleep(time.Second * 30)
 	// mp.StopCrawling()
+	// mp.StartCrawling(newMjpegstream, newUser, newPass, newTimeout)
 	<-block
 
 }
