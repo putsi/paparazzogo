@@ -17,6 +17,7 @@ func main() {
 	// MJPEG-stream settings
 	user := ""
 	pass := ""
+        // If there is for GET-requests for 5 seconds, mjpeg-streaming will be paused.
 	timeout := 5 * time.Second
 	mjpegStream1 := "http://westunioncam.studentaffairs.duke.edu/mjpg/video.mjpg"
 	mjpegStream2 := "http://axis-m10-webcam.is.kent.edu/axis-cgi/mjpg/video.cgi"
