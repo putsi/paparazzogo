@@ -126,6 +126,10 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 					log.Fatal(err)
 				}
 				// Get frame parts until err is EOF or running is false
+				if img.Len() > 0 {
+					img.Reset()
+				}
+				img.Reset()
 				for err == nil && m.running {
 					amnt := 0
 					amnt, err = part.Read(buffer)
@@ -135,7 +139,6 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 						}
 						log.Fatal(err)
 					}
-					img.Reset()
 					img.Write(buffer[0:amnt])
 				}
 				if part != nil {
