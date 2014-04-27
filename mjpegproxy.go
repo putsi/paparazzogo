@@ -66,7 +66,9 @@ func (m *Mjpegproxy) startcrawling(mjpegStream, user, pass string, timeout time.
 	if user != "" && pass != "" {
 		request.SetBasicAuth(user, pass)
 	}
-	response, err := client.Do(request)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	var part *multipart.Part
 
@@ -74,15 +76,20 @@ func (m *Mjpegproxy) startcrawling(mjpegStream, user, pass string, timeout time.
 	img := bytes.Buffer{}
 
 	var lastconn time.Time
+	var response *http.Response
 
 	for m.running == true {
 		lastconn = <-m.conChan
 		if m.running && (time.Since(lastconn) < timeout || timeout == 0) {
 			response, err = client.Do(request)
-			defer response.Body.Close()
 			if err != nil {
-				log.Fatalln(err.Error())
+				log.Println(err.Error())
+				continue
 			}
+			if response.StatusCode != 200 {
+				log.Fatalln("Got invalid response status: ",response.Status)
+			}
+			defer response.Body.Close()
 			// Get boundary string from response and clean it up
 			split := strings.Split(response.Header.Get("Content-Type"), "boundary=")
 			boundary := split[1]
@@ -94,14 +101,14 @@ func (m *Mjpegproxy) startcrawling(mjpegStream, user, pass string, timeout time.
 			for m.running && (time.Since(lastconn) < timeout || timeout == 0) {
 				part, err = mpread.NextPart()
 				if err != nil {
-					log.Fatalln(err.Error())
+					log.Fatal(err)
 				}
 				// Get parts until EOF-error or running=false
 				for err == nil && m.running {
 					amnt := 0
 					amnt, err = part.Read(buffer)
 					if err != nil && err.Error() != "EOF" {
-						log.Fatalln(err.Error())
+						log.Fatal(err)
 					}
 					img.Write(buffer[0:amnt])
 				}
@@ -115,7 +122,7 @@ func (m *Mjpegproxy) startcrawling(mjpegStream, user, pass string, timeout time.
 				_, err = m.curImg.Write(img.Bytes())
 				if err != nil {
 					m.curImgLock.Unlock()
-					log.Fatalln(err.Error())
+					log.Fatal(err)
 				}
 				m.curImgLock.Unlock()
 				img.Reset()
