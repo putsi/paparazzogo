@@ -86,6 +86,10 @@ func (m *Mjpegproxy) startcrawling(mjpegStream, user, pass string, timeout time.
 				log.Println(err.Error())
 				continue
 			}
+			if response.StatusCode == 503 {
+				log.Println(response.Status)
+				continue
+			}
 			if response.StatusCode != 200 {
 				log.Fatalln("Got invalid response status: ",response.Status)
 			}
