@@ -10,7 +10,6 @@ package paparazzogo
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net"
@@ -26,13 +25,14 @@ type Mjpegproxy struct {
 	partbufsize int
 	imgbufsize  int
 
-	curImg     bytes.Buffer
-	curImgLock sync.RWMutex
-	conChan    chan time.Time
-	running    bool
-	l          net.Listener
-	writer     io.Writer
-	handler    http.Handler
+	curImg      bytes.Buffer
+	curImgLock  sync.RWMutex
+	conChan     chan time.Time
+	running     bool
+	runningLock sync.RWMutex
+	l           net.Listener
+	writer      io.Writer
+	handler     http.Handler
 }
 
 // NewMjpegproxy returns a new Mjpegproxy with default buffer
@@ -64,12 +64,25 @@ func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 // CloseStream stops and closes MJPEG-stream.
 func (m *Mjpegproxy) CloseStream() {
+	m.runningLock.Lock()
 	m.running = false
+	m.runningLock.Unlock()
 }
 
 // OpenStream creates a go-routine of openstream.
 func (m *Mjpegproxy) OpenStream(mjpegStream, user, pass string, timeout time.Duration) {
 	go m.openstream(mjpegStream, user, pass, timeout)
+}
+
+func (m *Mjpegproxy) checkrunning() bool {
+	m.runningLock.RLock()
+	running := m.running
+	m.runningLock.RUnlock()
+	if running {
+		return true
+	} else {
+		return false
+	}
 }
 
 // OpenStream sends request to target and handles
@@ -79,7 +92,9 @@ func (m *Mjpegproxy) OpenStream(mjpegStream, user, pass string, timeout time.Dur
 // lastconn (time of last request to ServeHTTP)
 // is bigger than timeout.
 func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Duration) {
+	m.runningLock.Lock()
 	m.running = true
+	m.runningLock.Unlock()
 	request, err := http.NewRequest("GET", mjpegStream, nil)
 	if user != "" && pass != "" {
 		request.SetBasicAuth(user, pass)
@@ -92,91 +107,76 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 	img := bytes.Buffer{}
 
 	var lastconn time.Time
-	//var response *http.Response
+	tr := &http.Transport{DisableKeepAlives: true}
+	client := &http.Client{Transport: tr}
 
-	for m.running == true {
+	for m.checkrunning() {
 		lastconn = <-m.conChan
-		if m.running && (time.Since(lastconn) < timeout || timeout == 0) {
-			tr := &http.Transport{
-				DisableKeepAlives: true,
-			}
-			client := &http.Client{Transport: tr}
-			var response *http.Response
-			response, err = client.Do(request)
-			if err != nil {
-				log.Println(err.Error())
-				continue
-			}
-			if response.StatusCode == 503 {
-				io.Copy(ioutil.Discard, response.Body)
-				response.Body.Close()
-				log.Println(response.Status)
-				continue
-			}
-			if response.StatusCode != 200 {
-				io.Copy(ioutil.Discard, response.Body)
-				response.Body.Close()
-				log.Fatalln("Got invalid response status: ", response.Status)
-			}
-			// Get boundary string from response and clean it up
-			split := strings.Split(response.Header.Get("Content-Type"), "boundary=")
-			boundary := split[1]
-			// TODO: Find out what happens when boundarystring ends in --
-			boundary = strings.Replace(boundary, "--", "", 1)
+		if m.checkrunning() && (time.Since(lastconn) < timeout || timeout == 0) {
+			func() {
+				var response *http.Response
+				response, err = client.Do(request)
+				if err != nil {
+					log.Println(err.Error())
+					return
+				}
+				defer response.Body.Close()
+				if response.StatusCode == 503 {
+					log.Println(response.Status)
+					return
+				}
+				if response.StatusCode != 200 {
+					log.Fatalln("Got invalid response status: ", response.Status)
+				}
+				// Get boundary string from response and clean it up
+				split := strings.Split(response.Header.Get("Content-Type"), "boundary=")
+				boundary := split[1]
+				// TODO: Find out what happens when boundarystring ends in --
+				boundary = strings.Replace(boundary, "--", "", 1)
 
-			reader := io.ReadCloser(response.Body)
-			mpread := multipart.NewReader(reader, boundary)
-			for m.running && (time.Since(lastconn) < timeout || timeout == 0) {
+				reader := io.ReadCloser(response.Body)
+				defer reader.Close()
+				mpread := multipart.NewReader(reader, boundary)
 				var part *multipart.Part
-				part, err = mpread.NextPart()
-				if err != nil {
-					reader.Close()
-					io.Copy(ioutil.Discard, response.Body)
-					response.Body.Close()
-					log.Fatal(err)
-				}
-				// Get frame parts until err is EOF or running is false
-				if img.Len() > 0 {
-					img.Reset()
-				}
-				img.Reset()
-				for err == nil && m.running {
-					amnt := 0
-					amnt, err = part.Read(buffer)
-					if err != nil && err.Error() != "EOF" {
-						if part != nil {
-							part.Close()
-						}
-						reader.Close()
-						io.Copy(ioutil.Discard, response.Body)
-						response.Body.Close()
-						log.Fatal(err)
-					}
-					img.Write(buffer[0:amnt])
-				}
-				if part != nil {
-					part.Close()
-				}
-				err = nil
 
-				if img.Len() > m.imgbufsize {
-					img.Truncate(m.imgbufsize)
+				for m.checkrunning() && (time.Since(lastconn) < timeout || timeout == 0) {
+					func() {
+						part, err = mpread.NextPart()
+						defer part.Close()
+						if err != nil {
+							log.Fatal(err)
+						}
+						// Get frame parts until err is EOF or running is false
+						if img.Len() > 0 {
+							img.Reset()
+						}
+						img.Reset()
+						for err == nil && m.checkrunning() {
+							amnt := 0
+							amnt, err = part.Read(buffer)
+							if err != nil && err.Error() != "EOF" {
+								if part != nil {
+								}
+								log.Fatal(err)
+							}
+							img.Write(buffer[0:amnt])
+						}
+						err = nil
+
+						if img.Len() > m.imgbufsize {
+							img.Truncate(m.imgbufsize)
+						}
+						m.curImgLock.Lock()
+						m.curImg.Reset()
+						_, err = m.curImg.Write(img.Bytes())
+						if err != nil {
+							m.curImgLock.Unlock()
+							log.Fatal(err)
+						}
+						m.curImgLock.Unlock()
+					}()
 				}
-				m.curImgLock.Lock()
-				m.curImg.Reset()
-				_, err = m.curImg.Write(img.Bytes())
-				if err != nil {
-					m.curImgLock.Unlock()
-					reader.Close()
-					io.Copy(ioutil.Discard, response.Body)
-					response.Body.Close()
-					log.Fatal(err)
-				}
-				m.curImgLock.Unlock()
-			}
-			reader.Close()
-			io.Copy(ioutil.Discard, response.Body)
-			response.Body.Close()
+			}()
 		}
 	}
 }
