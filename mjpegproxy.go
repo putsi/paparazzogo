@@ -58,13 +58,12 @@ func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Write(m.curImg.Bytes())
 	m.curImgLock.RUnlock()
 
-	m.lastConnLock.Lock()
-	m.lastConn = time.Now()
-	m.lastConnLock.Unlock()
-
 	select {
 	case m.conChan <- time.Now():
 	default:
+		m.lastConnLock.Lock()
+		m.lastConn = time.Now()
+		m.lastConnLock.Unlock()
 	}
 }
 
@@ -118,7 +117,6 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 	client := &http.Client{Transport: tr}
 
 	for m.checkrunning() {
-		//TODO2: change this to something that uses m.lastConn
 		lastconn = <-m.conChan
 		if !m.checkrunning() || (time.Since(lastconn) > timeout) {
 			continue
@@ -126,7 +124,6 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 		func() {
 			var response *http.Response
 			response, err = client.Do(request)
-			log.Println("New response")
 			if err != nil {
 				log.Println(err.Error())
 				return
@@ -156,15 +153,14 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 				m.lastConnLock.RUnlock()
 				func() {
 					part, err = mpread.NextPart()
-					log.Println("New part")
 					defer part.Close()
 					if err != nil {
 						log.Fatal(err)
 					}
-					// Get frame parts until err is EOF or running is false
 					if img.Len() > 0 {
 						img.Reset()
 					}
+					// Get frame parts until err is EOF or running is false
 					for err == nil && m.checkrunning() {
 						amnt := 0
 						amnt, err = part.Read(buffer)
