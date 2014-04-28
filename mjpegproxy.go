@@ -25,14 +25,16 @@ type Mjpegproxy struct {
 	partbufsize int
 	imgbufsize  int
 
-	curImg      bytes.Buffer
-	curImgLock  sync.RWMutex
-	conChan     chan time.Time
-	running     bool
-	runningLock sync.RWMutex
-	l           net.Listener
-	writer      io.Writer
-	handler     http.Handler
+	curImg       bytes.Buffer
+	curImgLock   sync.RWMutex
+	conChan      chan time.Time
+	lastConn     time.Time
+	lastConnLock sync.RWMutex
+	running      bool
+	runningLock  sync.RWMutex
+	l            net.Listener
+	writer       io.Writer
+	handler      http.Handler
 }
 
 // NewMjpegproxy returns a new Mjpegproxy with default buffer
@@ -56,6 +58,10 @@ func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Write(m.curImg.Bytes())
 	m.curImgLock.RUnlock()
 
+	m.lastConnLock.Lock()
+	m.lastConn = time.Now()
+	m.lastConnLock.Unlock()
+
 	select {
 	case m.conChan <- time.Now():
 	default:
@@ -74,6 +80,7 @@ func (m *Mjpegproxy) OpenStream(mjpegStream, user, pass string, timeout time.Dur
 	go m.openstream(mjpegStream, user, pass, timeout)
 }
 
+// checkrunning returns current running state.
 func (m *Mjpegproxy) checkrunning() bool {
 	m.runningLock.RLock()
 	running := m.running
@@ -111,72 +118,74 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 	client := &http.Client{Transport: tr}
 
 	for m.checkrunning() {
+		//TODO2: change this to something that uses m.lastConn
 		lastconn = <-m.conChan
-		if m.checkrunning() && (time.Since(lastconn) < timeout || timeout == 0) {
-			func() {
-				var response *http.Response
-				response, err = client.Do(request)
-				if err != nil {
-					log.Println(err.Error())
-					return
-				}
-				defer response.Body.Close()
-				if response.StatusCode == 503 {
-					log.Println(response.Status)
-					return
-				}
-				if response.StatusCode != 200 {
-					log.Fatalln("Got invalid response status: ", response.Status)
-				}
-				// Get boundary string from response and clean it up
-				split := strings.Split(response.Header.Get("Content-Type"), "boundary=")
-				boundary := split[1]
-				// TODO: Find out what happens when boundarystring ends in --
-				boundary = strings.Replace(boundary, "--", "", 1)
-
-				reader := io.ReadCloser(response.Body)
-				defer reader.Close()
-				mpread := multipart.NewReader(reader, boundary)
-				var part *multipart.Part
-
-				for m.checkrunning() && (time.Since(lastconn) < timeout || timeout == 0) {
-					func() {
-						part, err = mpread.NextPart()
-						defer part.Close()
-						if err != nil {
-							log.Fatal(err)
-						}
-						// Get frame parts until err is EOF or running is false
-						if img.Len() > 0 {
-							img.Reset()
-						}
-						img.Reset()
-						for err == nil && m.checkrunning() {
-							amnt := 0
-							amnt, err = part.Read(buffer)
-							if err != nil && err.Error() != "EOF" {
-								if part != nil {
-								}
-								log.Fatal(err)
-							}
-							img.Write(buffer[0:amnt])
-						}
-						err = nil
-
-						if img.Len() > m.imgbufsize {
-							img.Truncate(m.imgbufsize)
-						}
-						m.curImgLock.Lock()
-						m.curImg.Reset()
-						_, err = m.curImg.Write(img.Bytes())
-						if err != nil {
-							m.curImgLock.Unlock()
-							log.Fatal(err)
-						}
-						m.curImgLock.Unlock()
-					}()
-				}
-			}()
+		if !m.checkrunning() || (time.Since(lastconn) > timeout) {
+			continue
 		}
+		func() {
+			var response *http.Response
+			response, err = client.Do(request)
+			log.Println("New response")
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			defer response.Body.Close()
+			if response.StatusCode == 503 {
+				log.Println(response.Status)
+				return
+			}
+			if response.StatusCode != 200 {
+				log.Fatalln("Got invalid response status: ", response.Status)
+			}
+			// Get boundary string from response and clean it up
+			split := strings.Split(response.Header.Get("Content-Type"), "boundary=")
+			boundary := split[1]
+			// TODO: Find out what happens when boundarystring ends in --
+			boundary = strings.Replace(boundary, "--", "", 1)
+
+			reader := io.ReadCloser(response.Body)
+			defer reader.Close()
+			mpread := multipart.NewReader(reader, boundary)
+			var part *multipart.Part
+
+			for m.checkrunning() && (time.Since(lastconn) < timeout) {
+				m.lastConnLock.RLock()
+				lastconn = m.lastConn
+				m.lastConnLock.RUnlock()
+				func() {
+					part, err = mpread.NextPart()
+					log.Println("New part")
+					defer part.Close()
+					if err != nil {
+						log.Fatal(err)
+					}
+					// Get frame parts until err is EOF or running is false
+					if img.Len() > 0 {
+						img.Reset()
+					}
+					for err == nil && m.checkrunning() {
+						amnt := 0
+						amnt, err = part.Read(buffer)
+						if err != nil && err.Error() != "EOF" {
+							log.Fatal(err)
+						}
+						img.Write(buffer[0:amnt])
+					}
+					err = nil
+					if img.Len() > m.imgbufsize {
+						img.Truncate(m.imgbufsize)
+					}
+					m.curImgLock.Lock()
+					defer m.curImgLock.Unlock()
+					m.curImg.Reset()
+					_, err = m.curImg.Write(img.Bytes())
+					if err != nil {
+						log.Fatal(err)
+					}
+				}()
+			}
+		}()
 	}
 }
