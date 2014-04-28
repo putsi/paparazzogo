@@ -10,6 +10,7 @@ package paparazzogo
 import (
 	"bytes"
 	"io"
+	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net"
@@ -79,7 +80,6 @@ func (m *Mjpegproxy) OpenStream(mjpegStream, user, pass string, timeout time.Dur
 // is bigger than timeout.
 func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Duration) {
 	m.running = true
-	client := new(http.Client)
 	request, err := http.NewRequest("GET", mjpegStream, nil)
 	if user != "" && pass != "" {
 		request.SetBasicAuth(user, pass)
@@ -91,24 +91,30 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 	buffer := make([]byte, m.partbufsize)
 	img := bytes.Buffer{}
 
-	var part *multipart.Part
 	var lastconn time.Time
-	var response *http.Response
+	//var response *http.Response
 
 	for m.running == true {
 		lastconn = <-m.conChan
 		if m.running && (time.Since(lastconn) < timeout || timeout == 0) {
+			tr := &http.Transport{
+				DisableKeepAlives: true,
+			}
+			client := &http.Client{Transport: tr}
+			var response *http.Response
 			response, err = client.Do(request)
 			if err != nil {
 				log.Println(err.Error())
 				continue
 			}
 			if response.StatusCode == 503 {
+				io.Copy(ioutil.Discard, response.Body)
 				response.Body.Close()
 				log.Println(response.Status)
 				continue
 			}
 			if response.StatusCode != 200 {
+				io.Copy(ioutil.Discard, response.Body)
 				response.Body.Close()
 				log.Fatalln("Got invalid response status: ", response.Status)
 			}
@@ -121,8 +127,12 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			reader := io.ReadCloser(response.Body)
 			mpread := multipart.NewReader(reader, boundary)
 			for m.running && (time.Since(lastconn) < timeout || timeout == 0) {
+				var part *multipart.Part
 				part, err = mpread.NextPart()
 				if err != nil {
+					reader.Close()
+					io.Copy(ioutil.Discard, response.Body)
+					response.Body.Close()
 					log.Fatal(err)
 				}
 				// Get frame parts until err is EOF or running is false
@@ -137,6 +147,9 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 						if part != nil {
 							part.Close()
 						}
+						reader.Close()
+						io.Copy(ioutil.Discard, response.Body)
+						response.Body.Close()
 						log.Fatal(err)
 					}
 					img.Write(buffer[0:amnt])
@@ -154,17 +167,16 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 				_, err = m.curImg.Write(img.Bytes())
 				if err != nil {
 					m.curImgLock.Unlock()
+					reader.Close()
+					io.Copy(ioutil.Discard, response.Body)
+					response.Body.Close()
 					log.Fatal(err)
 				}
 				m.curImgLock.Unlock()
-
 			}
-			response.Body.Close()
 			reader.Close()
-		} else if response != nil {
-			{
-				response.Body.Close()
-			}
+			io.Copy(ioutil.Discard, response.Body)
+			response.Body.Close()
 		}
 	}
 }
