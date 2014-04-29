@@ -55,9 +55,9 @@ func NewMjpegproxy() *Mjpegproxy {
 // if it was closed by idle timeout.
 func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	m.curImgLock.RLock()
-	w.Write(m.curImg.Bytes())
+	buf := m.curImg.Bytes()
 	m.curImgLock.RUnlock()
-
+	w.Write(buf)
 	select {
 	case m.conChan <- time.Now():
 	default:

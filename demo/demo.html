@@ -7,7 +7,7 @@
                 <script type="text/javascript">
                         $(document).ready(function() {
                                 // Active camera will refresh every 1 seconds
-                                var TIMEOUT = 1000;
+                                var TIMEOUT = 100;
                                 var refreshInterval = setInterval(function() {
                                         var random = Math.floor(Math.random() * Math.pow(2, 31));
                                         $('img#camera').attr('src', 'http://127.0.0.1:8080/img.jpg?i=' + Math.random());
