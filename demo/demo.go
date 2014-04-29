@@ -19,7 +19,7 @@ func main() {
 	// If there is zero GET-requests for 5 seconds, mjpeg-stream will be closed.
 	// Streaming will be reopened after next request.
 	timeout := 5 * time.Second
-	mjpegStream := "http://westunioncam.studentaffairs.duke.edu/mjpg/video.mjpg"
+	mjpegStream := "http://194.117.170.14/axis-cgi/mjpg/video.cgi?camera=1"
 
 	mjpegHandler := paparazzogo.NewMjpegproxy()
 	mjpegHandler.OpenStream(mjpegStream, user, pass, timeout)

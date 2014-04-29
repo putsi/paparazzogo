@@ -134,6 +134,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			if response.StatusCode != 200 {
 				log.Fatalln("Got invalid response status: ", response.Status)
 			}
+			startTime := time.Now()
 			// Get boundary string from response and clean it up
 			split := strings.Split(response.Header.Get("Content-Type"), "boundary=")
 			boundary := split[1]
@@ -147,6 +148,11 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			amnt := 0
 
 			for m.GetRunning() && (time.Since(lastconn) < timeout) {
+				// Do not use one response longer than hour.
+				// Some IP-cameras stop serving after few hours.
+				if time.Since(startTime) > time.Hour {
+					break
+				}
 				m.lastConnLock.RLock()
 				lastconn = m.lastConn
 				m.lastConnLock.RUnlock()
