@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT-style
 // licence that can be found in the LICENCE file.
 
-/* Package paparazzogo implements a caching proxy for
+/*Package paparazzogo implements a caching proxy for
 serving MJPEG-stream as JPG-images.
 */
 package paparazzogo
@@ -69,9 +69,7 @@ func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 // CloseStream stops and closes MJPEG-stream.
 func (m *Mjpegproxy) CloseStream() {
-	m.runningLock.Lock()
-	m.running = false
-	m.runningLock.Unlock()
+	m.setRunning(false)
 }
 
 // OpenStream creates a go-routine of openstream.
@@ -79,16 +77,18 @@ func (m *Mjpegproxy) OpenStream(mjpegStream, user, pass string, timeout time.Dur
 	go m.openstream(mjpegStream, user, pass, timeout)
 }
 
-// checkrunning returns current running state.
-func (m *Mjpegproxy) checkrunning() bool {
+// GetRunning returns state of openstream.
+func (m *Mjpegproxy) GetRunning() bool {
 	m.runningLock.RLock()
-	running := m.running
-	m.runningLock.RUnlock()
-	if running {
-		return true
-	} else {
-		return false
-	}
+	defer m.runningLock.RUnlock()
+	return m.running
+}
+
+// SetRunning controls m.running-bool.
+func (m *Mjpegproxy) setRunning(r bool) {
+	m.runningLock.Lock()
+	defer m.runningLock.Unlock()
+	m.running = r
 }
 
 // OpenStream sends request to target and handles
@@ -98,9 +98,7 @@ func (m *Mjpegproxy) checkrunning() bool {
 // lastconn (time of last request to ServeHTTP)
 // is bigger than timeout.
 func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Duration) {
-	m.runningLock.Lock()
-	m.running = true
-	m.runningLock.Unlock()
+	m.setRunning(true)
 	request, err := http.NewRequest("GET", mjpegStream, nil)
 	if user != "" && pass != "" {
 		request.SetBasicAuth(user, pass)
@@ -116,9 +114,9 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 	tr := &http.Transport{DisableKeepAlives: true}
 	client := &http.Client{Transport: tr}
 
-	for m.checkrunning() {
+	for m.GetRunning() {
 		lastconn = <-m.conChan
-		if !m.checkrunning() || (time.Since(lastconn) > timeout) {
+		if !m.GetRunning() || (time.Since(lastconn) > timeout) {
 			continue
 		}
 		func() {
@@ -130,7 +128,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			}
 			defer response.Body.Close()
 			if response.StatusCode == 503 {
-				log.Println(response.Status)
+				log.Println("Got 503 Service unavailable on ", mjpegStream)
 				return
 			}
 			if response.StatusCode != 200 {
@@ -146,29 +144,28 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			defer reader.Close()
 			mpread := multipart.NewReader(reader, boundary)
 			var part *multipart.Part
+			amnt := 0
 
-			for m.checkrunning() && (time.Since(lastconn) < timeout) {
+			for m.GetRunning() && (time.Since(lastconn) < timeout) {
 				m.lastConnLock.RLock()
 				lastconn = m.lastConn
 				m.lastConnLock.RUnlock()
 				func() {
+					defer img.Reset()
 					part, err = mpread.NextPart()
 					defer part.Close()
 					if err != nil {
 						log.Fatal(err)
 					}
-					if img.Len() > 0 {
-						img.Reset()
-					}
 					// Get frame parts until err is EOF or running is false
-					for err == nil && m.checkrunning() {
-						amnt := 0
+					for err == nil && m.GetRunning() {
 						amnt, err = part.Read(buffer)
 						if err != nil && err.Error() != "EOF" {
 							log.Fatal(err)
 						}
 						img.Write(buffer[0:amnt])
 					}
+					// Clear EOF-error
 					err = nil
 					if img.Len() > m.imgbufsize {
 						img.Truncate(m.imgbufsize)
