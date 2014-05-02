@@ -165,14 +165,13 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 					part, err = mpread.NextPart()
 					defer part.Close()
 					if err != nil {
-						log.Println(err)
-						return
+						log.Fatalln(err)
 					}
 					// Get frame parts until err is EOF or running is false
 					for err == nil && m.GetRunning() {
 						amnt, err = part.Read(buffer)
 						if err != nil && err.Error() != "EOF" {
-							log.Println(err)
+							log.Fatalln(err)
 							return
 						}
 						img.Write(buffer[0:amnt])
@@ -187,8 +186,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 					m.curImg.Reset()
 					_, err = m.curImg.Write(img.Bytes())
 					if err != nil {
-						log.Println(err)
-						return
+						log.Fatalln(err)
 					}
 				}()
 			}
