@@ -55,9 +55,10 @@ func NewMjpegproxy() *Mjpegproxy {
 // if it was closed by idle timeout.
 func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	m.curImgLock.RLock()
-	buf := m.curImg.Bytes()
+	buf := bytes.Buffer{}
+	buf.Write(m.curImg.Bytes())
 	m.curImgLock.RUnlock()
-	w.Write(buf)
+	w.Write(buf.Bytes())
 	select {
 	case m.conChan <- time.Now():
 	default:
@@ -132,7 +133,8 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 				return
 			}
 			if response.StatusCode != 200 {
-				log.Fatalln("Got invalid response status: ", response.Status)
+				log.Println("Got invalid response status: ", response.Status)
+				return
 			}
 			startTime := time.Now()
 			// Get boundary string from response and clean it up
@@ -161,13 +163,15 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 					part, err = mpread.NextPart()
 					defer part.Close()
 					if err != nil {
-						log.Fatal(err)
+						log.Println(err)
+						return
 					}
 					// Get frame parts until err is EOF or running is false
 					for err == nil && m.GetRunning() {
 						amnt, err = part.Read(buffer)
 						if err != nil && err.Error() != "EOF" {
-							log.Fatal(err)
+							log.Println(err)
+							return
 						}
 						img.Write(buffer[0:amnt])
 					}
@@ -181,7 +185,8 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 					m.curImg.Reset()
 					_, err = m.curImg.Write(img.Bytes())
 					if err != nil {
-						log.Fatal(err)
+						log.Println(err)
+						return
 					}
 				}()
 			}
