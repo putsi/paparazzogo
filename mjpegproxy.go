@@ -54,10 +54,12 @@ func NewMjpegproxy() *Mjpegproxy {
 // as JPG. It also reopens MJPEG-stream
 // if it was closed by idle timeout.
 func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	m.curImgLock.RLock()
 	buf := bytes.Buffer{}
+	
+	m.curImgLock.RLock()
 	buf.Write(m.curImg.Bytes())
 	m.curImgLock.RUnlock()
+	
 	w.Write(buf.Bytes())
 	select {
 	case m.conChan <- time.Now():
