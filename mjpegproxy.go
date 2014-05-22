@@ -9,6 +9,7 @@ package paparazzogo
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"log"
 	"mime/multipart"
@@ -55,11 +56,11 @@ func NewMjpegproxy() *Mjpegproxy {
 // if it was closed by idle timeout.
 func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	buf := bytes.Buffer{}
-	
+
 	m.curImgLock.RLock()
 	buf.Write(m.curImg.Bytes())
 	m.curImgLock.RUnlock()
-	
+
 	w.Write(buf.Bytes())
 	select {
 	case m.conChan <- time.Now():
@@ -87,20 +88,71 @@ func (m *Mjpegproxy) GetRunning() bool {
 	return m.running
 }
 
-// SetRunning controls m.running-bool.
 func (m *Mjpegproxy) setRunning(r bool) {
 	m.runningLock.Lock()
 	defer m.runningLock.Unlock()
 	m.running = r
 }
 
+func (m *Mjpegproxy) getresponse(request *http.Request) (*http.Response, error) {
+	tr := &http.Transport{DisableKeepAlives: true}
+	client := &http.Client{Transport: tr}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != 200 {
+		response.Body.Close()
+		errs := "Got invalid response status: " + response.Status
+		return nil, errors.New(errs)
+	}
+	return response, nil
+}
+
+func (m *Mjpegproxy) getmultipart(response *http.Response) (io.ReadCloser, *string, error) {
+	// Get boundary string from response and clean it up
+	boundary := response.Header.Get("Content-Type")
+	if boundary == "" {
+		return nil, nil, errors.New("Found no boundary-value in response!")
+	}
+	split := strings.Split(boundary, "boundary=")
+	boundary = split[1]
+	// TODO: Find out what happens when boundarystring is "--something--" or "something--"
+	boundary = strings.Replace(boundary, "--", "", 1)
+	reader := io.ReadCloser(response.Body)
+	return reader, &boundary, nil
+}
+
+func (m *Mjpegproxy) readpart(mpread *multipart.Reader) (*bytes.Buffer, error) {
+	buffer := make([]byte, m.partbufsize)
+	img := bytes.Buffer{}
+	part, err := mpread.NextPart()
+	if err != nil {
+		return nil, err
+	}
+	defer part.Close()
+	amnt := 0
+	// Get frame parts until err is EOF or running is false
+	for err == nil && m.GetRunning() {
+		amnt, err = part.Read(buffer)
+		if err != nil && err.Error() != "EOF" {
+			return nil, err
+		}
+		img.Write(buffer[0:amnt])
+	}
+	return &img, nil
+}
+
 // OpenStream sends request to target and handles
-// response. It opens MJPEG-stream and received frame
-// to m.curImg. It closes stream if m.running is set
-// to false or if difference between current time and
-// lastconn (time of last request to ServeHTTP)
-// is bigger than timeout.
+// response. It opens MJPEG-stream and copies received
+// frame to m.curImg. It closes stream if m.CloseStream()
+// is called or if difference between current time and
+// time of last request to ServeHTTP is bigger than timeout.
 func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Duration) {
+	var lastconn time.Time
+	var img *bytes.Buffer
+	// How long will we wait after error before trying to reconnect
+	waittime := time.Second * 5
 	m.setRunning(true)
 	request, err := http.NewRequest("GET", mjpegStream, nil)
 	if user != "" && pass != "" {
@@ -110,86 +162,48 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 		log.Fatal(err)
 	}
 
-	buffer := make([]byte, m.partbufsize)
-	img := bytes.Buffer{}
-
-	var lastconn time.Time
-	tr := &http.Transport{DisableKeepAlives: true}
-	client := &http.Client{Transport: tr}
-
 	for m.GetRunning() {
 		lastconn = <-m.conChan
 		if !m.GetRunning() || (time.Since(lastconn) > timeout) {
 			continue
 		}
-		func() {
-			var response *http.Response
-			response, err = client.Do(request)
+		var response *http.Response
+		response, err = m.getresponse(request)
+		if err != nil {
+			log.Println(err)
+			time.Sleep(waittime)
+			continue
+		}
+		defer response.Body.Close()
+		reader, boundary, err := m.getmultipart(response)
+		if err != nil {
+			log.Println(err)
+			response.Body.Close()
+			time.Sleep(waittime)
+			continue
+		}
+		defer reader.Close()
+		mpread := multipart.NewReader(reader, *boundary)
+		log.Println("Successfully started streaming from", mjpegStream)
+
+		for m.GetRunning() && (time.Since(lastconn) < timeout) && err == nil {
+			m.lastConnLock.RLock()
+			lastconn = m.lastConn
+			m.lastConnLock.RUnlock()
+			img, err = m.readpart(mpread)
+			m.curImgLock.Lock()
+			m.curImg.Reset()
+			_, err = m.curImg.Write(img.Bytes())
+			m.curImgLock.Unlock()
 			if err != nil {
-				log.Println(err.Error())
-				return
+				log.Println(err)
+				reader.Close()
+				response.Body.Close()
+				time.Sleep(waittime)
+				break
 			}
-			defer response.Body.Close()
-			if response.StatusCode == 503 {
-				log.Println("Got 503 Service unavailable on ", mjpegStream)
-				return
-			}
-			if response.StatusCode != 200 {
-				log.Println("Got invalid response status: ", response.Status)
-				return
-			}
-			startTime := time.Now()
-			// Get boundary string from response and clean it up
-			split := strings.Split(response.Header.Get("Content-Type"), "boundary=")
-			boundary := split[1]
-			// TODO: Find out what happens when boundarystring ends in --
-			boundary = strings.Replace(boundary, "--", "", 1)
-
-			reader := io.ReadCloser(response.Body)
-			defer reader.Close()
-			mpread := multipart.NewReader(reader, boundary)
-			var part *multipart.Part
-			amnt := 0
-
-			for m.GetRunning() && (time.Since(lastconn) < timeout) {
-				// Do not use one response longer than hour.
-				// Some IP-cameras stop serving after few hours.
-				if time.Since(startTime) > time.Hour {
-					break
-				}
-				m.lastConnLock.RLock()
-				lastconn = m.lastConn
-				m.lastConnLock.RUnlock()
-				func() {
-					defer img.Reset()
-					part, err = mpread.NextPart()
-					defer part.Close()
-					if err != nil {
-						log.Fatalln(err)
-					}
-					// Get frame parts until err is EOF or running is false
-					for err == nil && m.GetRunning() {
-						amnt, err = part.Read(buffer)
-						if err != nil && err.Error() != "EOF" {
-							log.Fatalln(err)
-							return
-						}
-						img.Write(buffer[0:amnt])
-					}
-					// Clear EOF-error
-					err = nil
-					if img.Len() > m.imgbufsize {
-						img.Truncate(m.imgbufsize)
-					}
-					m.curImgLock.Lock()
-					defer m.curImgLock.Unlock()
-					m.curImg.Reset()
-					_, err = m.curImg.Write(img.Bytes())
-					if err != nil {
-						log.Fatalln(err)
-					}
-				}()
-			}
-		}()
+			img.Reset()
+		}
 	}
+	log.Println("Stopped streaming from", mjpegStream)
 }
