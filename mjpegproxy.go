@@ -162,6 +162,8 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 		log.Fatal(err)
 	}
 
+	log.Println("Starting streaming from", mjpegStream)
+
 	for m.GetRunning() {
 		lastconn = <-m.conChan
 		if !m.GetRunning() || (time.Since(lastconn) > timeout) {
@@ -184,26 +186,30 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 		}
 		defer reader.Close()
 		mpread := multipart.NewReader(reader, *boundary)
-		log.Println("Successfully started streaming from", mjpegStream)
-
 		for m.GetRunning() && (time.Since(lastconn) < timeout) && err == nil {
 			m.lastConnLock.RLock()
 			lastconn = m.lastConn
 			m.lastConnLock.RUnlock()
 			img, err = m.readpart(mpread)
-			m.curImgLock.Lock()
-			m.curImg.Reset()
-			_, err = m.curImg.Write(img.Bytes())
-			m.curImgLock.Unlock()
 			if err != nil {
 				log.Println(err)
 				reader.Close()
 				response.Body.Close()
 				time.Sleep(waittime)
-				img.Reset()
 				break
 			}
+			m.curImgLock.Lock()
+			m.curImg.Reset()
+			_, err = m.curImg.Write(img.Bytes())
+			m.curImgLock.Unlock()
 			img.Reset()
+			if err != nil {
+				log.Println(err)
+				reader.Close()
+				response.Body.Close()
+				time.Sleep(waittime)
+				break
+			}
 		}
 	}
 	log.Println("Stopped streaming from", mjpegStream)
