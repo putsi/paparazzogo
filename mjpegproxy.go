@@ -200,6 +200,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 				reader.Close()
 				response.Body.Close()
 				time.Sleep(waittime)
+				img.Reset()
 				break
 			}
 			img.Reset()
