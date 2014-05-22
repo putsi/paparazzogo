@@ -8,12 +8,11 @@ _A stalker of [IP cameras](http://en.wikipedia.org/wiki/IP_camera)_
 **What is this?**
 
 A high performance web proxy for serving [MJPG](http://en.wikipedia.org/wiki/Motion_JPEG) streams to the masses.
-
 Done with [Go Language](http://golang.org/).
 
 IPCamera (1) <-> (1) Paparazzo.go (1) <-> (N) Users
 
-![Demo screenshot](https://github.com/wilhelmbot/Paparazzo.js/raw/master/mjpg_demo.gif "Streaming a VIVOTEK camera")
+![Demo screenshot](https://raw.githubusercontent.com/putsi/paparazzogo/master/mjpg_demo.gif "Streaming a VIVOTEK camera")
 
 Background
 -
@@ -31,25 +30,21 @@ IP cameras are slow devices that can't handle a regular amount of web traffic. S
 Usage
 -
 
-Get Paparazzo.Go:
+Get Paparazzo and start demo:
+```
+go get github.com/putsi/paparazzogo
 
-``go get github.com/putsi/paparazzogo`` 
-
-
-Start demo:
-
-``cd $GOPATH/src/github.com/putsi/paparazzogo/demo``
-
-``go run demo.go`` 
-
-``open demo.html`` 
+cd $GOPATH/src/github.com/putsi/paparazzogo/demo
+go run demo.go
+open demo.html
+```
 
 **See more examples in demo-folder.**
+
+Licence
+- 
+Use of this source code is governed by a MIT-style licence that can be found in the [LICENCE](https://raw.githubusercontent.com/putsi/paparazzogo/master/LICENSE)-file.
 
 See Also
 -
 **[The original Paparazzo.js for NodeJS!](https://github.com/rodowi/Paparazzo.js)**
-
-Licence
-- 
-See [LICENCE](https://raw.githubusercontent.com/putsi/paparazzogo/master/LICENSE)-file.

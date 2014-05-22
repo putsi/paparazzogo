@@ -38,7 +38,7 @@ func main() {
 	block := make(chan bool)
 	// time.Sleep(time.Second * 30)
 	// mjpegHandler2.CloseStream()
-	// mjpegHandler2.CloseStream(newMjpegstream, newUser, newPass, newTimeout)
+	// mjpegHandler2.OpenStream(newMjpegstream, newUser, newPass, newTimeout)
 	<-block
 
 }

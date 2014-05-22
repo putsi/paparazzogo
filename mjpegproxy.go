@@ -186,6 +186,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 		}
 		defer reader.Close()
 		mpread := multipart.NewReader(reader, *boundary)
+
 		for m.GetRunning() && (time.Since(lastconn) < timeout) && err == nil {
 			m.lastConnLock.RLock()
 			lastconn = m.lastConn
