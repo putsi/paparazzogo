@@ -194,9 +194,6 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			img, err = m.readpart(mpread)
 			if err != nil {
 				log.Println(err)
-				reader.Close()
-				response.Body.Close()
-				time.Sleep(waittime)
 				break
 			}
 			m.curImgLock.Lock()
@@ -206,12 +203,12 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			img.Reset()
 			if err != nil {
 				log.Println(err)
-				reader.Close()
-				response.Body.Close()
-				time.Sleep(waittime)
 				break
 			}
 		}
+		reader.Close()
+		response.Body.Close()
+		time.Sleep(waittime)
 	}
 	log.Println("Stopped streaming from", mjpegStream)
 }
