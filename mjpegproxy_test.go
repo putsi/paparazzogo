@@ -289,8 +289,10 @@ func Test_ServeHTTP(t *testing.T) {
 	mp.curImg.Write(testString)
 	recorder := httptest.NewRecorder()
 	mp.ServeHTTP(recorder, req)
-
-	if !bytes.Equal(mp.curImg.Bytes(), testString) {
+	if time.Since(mp.lastConn) > time.Second {
+		t.Fatal("Unexpected lastconn value!")
+	}
+	if !bytes.Equal(recorder.Body.Bytes(), testString) {
 		t.Fatalf("Content mismatch: expected %s, got %s", string(testString), string(mp.curImg.Bytes()))
 	}
 
