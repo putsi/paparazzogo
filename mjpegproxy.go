@@ -132,7 +132,6 @@ func (m *Mjpegproxy) getmultipart(response *http.Response) (io.ReadCloser, *stri
 	boundary = strings.Replace(boundary, "--", "", -1)
 
 	reader := io.ReadCloser(response.Body)
-	log.Println(boundary)
 	return reader, &boundary, nil
 }
 
