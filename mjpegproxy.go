@@ -12,10 +12,10 @@ import (
 	"errors"
 	"io"
 	"log"
+	"mime"
 	"mime/multipart"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
@@ -26,6 +26,7 @@ type Mjpegproxy struct {
 	partbufsize int
 	imgbufsize  int
 
+	mjpegStream  string
 	curImg       bytes.Buffer
 	curImgLock   sync.RWMutex
 	conChan      chan time.Time
@@ -103,22 +104,29 @@ func (m *Mjpegproxy) getresponse(request *http.Request) (*http.Response, error) 
 	}
 	if response.StatusCode != 200 {
 		response.Body.Close()
-		errs := "Got invalid response status: " + response.Status
+		errs := m.mjpegStream + " " + "Got invalid response status: " + response.Status
 		return nil, errors.New(errs)
 	}
 	return response, nil
 }
 
 func (m *Mjpegproxy) getmultipart(response *http.Response) (io.ReadCloser, *string, error) {
-	// Get boundary string from response and clean it up
-	boundary := response.Header.Get("Content-Type")
-	if boundary == "" {
-		return nil, nil, errors.New("Found no boundary-value in response!")
+	header := response.Header.Get("Content-Type")
+	if header == "" {
+		errs := m.mjpegStream + " " + "Content-Type isn't specified!"
+		return nil, nil, errors.New(errs)
 	}
-	split := strings.Split(boundary, "boundary=")
-	boundary = split[1]
-	// TODO: Find out what happens when boundarystring is "--something--" or "something--"
-	boundary = strings.Replace(boundary, "--", "", 1)
+	ct, params, err := mime.ParseMediaType(header)
+	if err != nil || ct != "multipart/x-mixed-replace" {
+		errs := m.mjpegStream + " " + "Wrong Content-Type: expected multipart/x-mixed-replace!, got " + ct
+		return nil, nil, errors.New(errs)
+	}
+	boundary, ok := params["boundary"]
+	if !ok {
+		errs := m.mjpegStream + " " + "No multipart boundary param in Content-Type!"
+		return nil, nil, errors.New(errs)
+	}
+
 	reader := io.ReadCloser(response.Body)
 	return reader, &boundary, nil
 }
@@ -149,51 +157,55 @@ func (m *Mjpegproxy) readpart(mpread *multipart.Reader) (*bytes.Buffer, error) {
 // is called or if difference between current time and
 // time of last request to ServeHTTP is bigger than timeout.
 func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Duration) {
+	m.mjpegStream = mjpegStream
 	var lastconn time.Time
 	var img *bytes.Buffer
 	// How long will we wait after error before trying to reconnect
-	waittime := time.Second * 5
+	waittime := time.Second * 1
 	m.setRunning(true)
 	request, err := http.NewRequest("GET", mjpegStream, nil)
 	if user != "" && pass != "" {
 		request.SetBasicAuth(user, pass)
 	}
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(m.mjpegStream, err)
 	}
 
 	log.Println("Starting streaming from", mjpegStream)
 
 	for m.GetRunning() {
 		lastconn = <-m.conChan
+		m.lastConnLock.Lock()
+		m.lastConn = lastconn
+		m.lastConnLock.Unlock()
+
 		if !m.GetRunning() || (time.Since(lastconn) > timeout) {
 			continue
 		}
 		var response *http.Response
 		response, err = m.getresponse(request)
 		if err != nil {
-			log.Println(err)
+			log.Println(m.mjpegStream, err)
 			time.Sleep(waittime)
 			continue
 		}
 		defer response.Body.Close()
 		reader, boundary, err := m.getmultipart(response)
 		if err != nil {
-			log.Println(err)
+			log.Println(m.mjpegStream, err)
 			response.Body.Close()
 			time.Sleep(waittime)
 			continue
 		}
 		defer reader.Close()
 		mpread := multipart.NewReader(reader, *boundary)
-
 		for m.GetRunning() && (time.Since(lastconn) < timeout) && err == nil {
 			m.lastConnLock.RLock()
 			lastconn = m.lastConn
 			m.lastConnLock.RUnlock()
 			img, err = m.readpart(mpread)
 			if err != nil {
-				log.Println(err)
+				log.Println(m.mjpegStream, err)
 				break
 			}
 			m.curImgLock.Lock()
@@ -202,7 +214,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			m.curImgLock.Unlock()
 			img.Reset()
 			if err != nil {
-				log.Println(err)
+				log.Println(m.mjpegStream, err)
 				break
 			}
 		}
