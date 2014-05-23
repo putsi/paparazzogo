@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -126,8 +127,12 @@ func (m *Mjpegproxy) getmultipart(response *http.Response) (io.ReadCloser, *stri
 		errs := m.mjpegStream + " " + "No multipart boundary param in Content-Type!"
 		return nil, nil, errors.New(errs)
 	}
+	// Some IP-cameras screw up boundary strings so we
+	// have to remove excessive "--" characters manually.
+	boundary = strings.Replace(boundary, "--", "", -1)
 
 	reader := io.ReadCloser(response.Body)
+	log.Println(boundary)
 	return reader, &boundary, nil
 }
 
