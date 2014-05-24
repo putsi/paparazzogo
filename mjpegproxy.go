@@ -183,7 +183,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 		m.lastConn = lastconn
 		m.lastConnLock.Unlock()
 
-		if !m.GetRunning() || (time.Since(lastconn) > timeout) {
+		if !m.GetRunning() {
 			continue
 		}
 		var response *http.Response

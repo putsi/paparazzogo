@@ -19,6 +19,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,8 +27,6 @@ import (
 
 //Multipart body for testing.
 var firstPart = "01234567890"
-var secondPart = "abcdefgh"
-var thirdPart = "!#¤%&/<>"
 var boundary = "MyBoundary"
 var validBody = `
 Content-type: multipart/x-mixed-replace;boundary=` + boundary + `
@@ -68,7 +67,7 @@ Content-type: text/plain
 
 func Test_NewMjpegproxy(t *testing.T) {
 	mp := NewMjpegproxy()
-	if mp.running != false {
+	if mp == nil {
 		t.Fatal("Could not create Mjpegproxy!")
 	}
 }
@@ -142,8 +141,12 @@ func Test_getresponse_invalid_status(t *testing.T) {
 		t.Fatal("Failed to create request.")
 	}
 	_, err = mp.getresponse(request)
-	if strings.Contains(string(invalidstatus), err.Error()) {
-		t.Fatalf("Wrong status code: %s vs %s", err.Error(), string(invalidstatus))
+	if err == nil {
+		t.Fatal("Unexpected nil error!")
+	}
+	str := strconv.Itoa(invalidstatus)
+	if !strings.Contains(err.Error(), str) {
+		t.Fatalf("Wrong status code: %s vs %s", err.Error(), str)
 	}
 }
 func Test_getresponse_noconnection(t *testing.T) {
@@ -153,6 +156,9 @@ func Test_getresponse_noconnection(t *testing.T) {
 		t.Fatal("Failed to create request.")
 	}
 	_, err = mp.getresponse(request)
+	if err == nil {
+		t.Fatal("Unexpected nil error!")
+	}
 	if !strings.Contains(err.Error(), "invalid port 99999") {
 		t.Fatalf("Wrong error on connection refuse: %s", err.Error())
 	}
@@ -190,7 +196,7 @@ func Test_getmultipart_noboundary(t *testing.T) {
 	}
 	_, _, err := mp.getmultipart(response)
 	if err == nil {
-		t.Fatal("Failed!")
+		t.Fatal("Unexpected nil error!")
 	}
 	if !strings.Contains(err.Error(), "No multipart boundary param in Content-Type!") {
 		t.Fatalf("Wrong error: %s", err.Error())
@@ -211,7 +217,7 @@ func Test_getmultipart_invalid(t *testing.T) {
 	}
 	_, _, err := mp.getmultipart(response)
 	if err == nil {
-		t.Fatal("Failed!")
+		t.Fatal("Unexpected nil error!")
 	}
 	if !strings.Contains(err.Error(), "Wrong Content-Type: expected multipart/x-mixed-replace!, got multipart/form-data") {
 		t.Fatalf("Wrong error: %s", err.Error())
@@ -231,7 +237,7 @@ func Test_getmultipart_noCT(t *testing.T) {
 	}
 	_, _, err := mp.getmultipart(response)
 	if err == nil {
-		t.Fatal("Failed!")
+		t.Fatal("Unexpected nil error!")
 	}
 	if !strings.Contains(err.Error(), "Content-Type isn't specified!") {
 		t.Fatalf("Wrong error: %s", err.Error())
@@ -261,6 +267,9 @@ func Test_readpart_invalid(t *testing.T) {
 	mpart := multipart.NewReader(reader, boundary)
 
 	_, err := mp.readpart(mpart)
+	if err == nil {
+		t.Fatal("Unexpected nil error!")
+	}
 	if !strings.Contains(err.Error(), "malformed MIME header line:") {
 		t.Fatal(err)
 	}
@@ -277,7 +286,10 @@ func Test_readpart_parterror(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = mp.readpart(mpart)
-	if err.Error() != "unexpected EOF" && err != nil {
+	if err == nil {
+		t.Fatal("Unexpected nil error!")
+	}
+	if err.Error() != "unexpected EOF" {
 		t.Fatal(err)
 	}
 }
@@ -295,7 +307,6 @@ func Test_ServeHTTP(t *testing.T) {
 	if !bytes.Equal(recorder.Body.Bytes(), testString) {
 		t.Fatalf("Content mismatch: expected %s, got %s", string(testString), string(mp.curImg.Bytes()))
 	}
-
 }
 
 func Test_OpenStream_logic(t *testing.T) {
