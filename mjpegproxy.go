@@ -108,28 +108,26 @@ func (m *Mjpegproxy) getresponse(request *http.Request) (*http.Response, error) 
 	return response, nil
 }
 
-func (m *Mjpegproxy) getmultipart(response *http.Response) (io.ReadCloser, *string, error) {
+func (m *Mjpegproxy) getboundary(response *http.Response) (string, error) {
 	header := response.Header.Get("Content-Type")
 	if header == "" {
 		errs := m.mjpegStream + " " + "Content-Type isn't specified!"
-		return nil, nil, errors.New(errs)
+		return "", errors.New(errs)
 	}
 	ct, params, err := mime.ParseMediaType(header)
 	if err != nil || ct != "multipart/x-mixed-replace" {
 		errs := m.mjpegStream + " " + "Wrong Content-Type: expected multipart/x-mixed-replace!, got " + ct
-		return nil, nil, errors.New(errs)
+		return "", errors.New(errs)
 	}
 	boundary, ok := params["boundary"]
 	if !ok {
 		errs := m.mjpegStream + " " + "No multipart boundary param in Content-Type!"
-		return nil, nil, errors.New(errs)
+		return "", errors.New(errs)
 	}
 	// Some IP-cameras screw up boundary strings so we
 	// have to remove excessive "--" characters manually.
 	boundary = strings.Replace(boundary, "--", "", -1)
-
-	reader := io.ReadCloser(response.Body)
-	return reader, &boundary, nil
+	return boundary, nil
 }
 
 // OpenStream sends request to target and handles
@@ -170,14 +168,14 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			time.Sleep(waittime)
 			continue
 		}
-		reader, boundary, err := m.getmultipart(response)
+		boundary, err := m.getboundary(response)
 		if err != nil {
 			log.Println(m.mjpegStream, err)
 			response.Body.Close()
 			time.Sleep(waittime)
 			continue
 		}
-		mpread := multipart.NewReader(reader, *boundary)
+		mpread := multipart.NewReader(response.Body, boundary)
 		for m.GetRunning() && (time.Since(lastconn) < timeout) && err == nil {
 			m.lastConnLock.RLock()
 			lastconn = m.lastConn
@@ -189,7 +187,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			}
 			m.curImgLock.Lock()
 			m.curImg.Reset()
-			_, err = m.curImg.ReadFrom(io.LimitReader(img, m.partbufsize))
+			_, err = m.curImg.ReadFrom(img)
 			m.curImgLock.Unlock()
 			img.Close()
 			if err != nil {
@@ -197,7 +195,6 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 				break
 			}
 		}
-		reader.Close()
 		response.Body.Close()
 		time.Sleep(waittime)
 	}
