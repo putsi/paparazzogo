@@ -24,8 +24,7 @@ import (
 // A Mjpegproxy implements http.Handler	interface and generates
 // JPG-images from a MJPEG-stream.
 type Mjpegproxy struct {
-	partbufsize int
-	imgbufsize  int
+	partbufsize int64
 
 	mjpegStream  string
 	curImg       bytes.Buffer
@@ -45,10 +44,8 @@ type Mjpegproxy struct {
 func NewMjpegproxy() *Mjpegproxy {
 	p := &Mjpegproxy{
 		conChan: make(chan time.Time),
-		// Max MJPEG-frame part size 1Mb.
-		partbufsize: 125000,
 		// Max MJPEG-frame size 5Mb.
-		imgbufsize: 625000,
+		partbufsize: 625000,
 	}
 	return p
 }
@@ -135,26 +132,6 @@ func (m *Mjpegproxy) getmultipart(response *http.Response) (io.ReadCloser, *stri
 	return reader, &boundary, nil
 }
 
-func (m *Mjpegproxy) readpart(mpread *multipart.Reader) (*bytes.Buffer, error) {
-	buffer := make([]byte, m.partbufsize)
-	img := bytes.Buffer{}
-	part, err := mpread.NextPart()
-	if err != nil {
-		return nil, err
-	}
-	defer part.Close()
-	amnt := 0
-	// Get frame parts until err is EOF or running is false
-	for err == nil && m.GetRunning() {
-		amnt, err = part.Read(buffer)
-		if err != nil && err.Error() != "EOF" {
-			return nil, err
-		}
-		img.Write(buffer[0:amnt])
-	}
-	return &img, nil
-}
-
 // OpenStream sends request to target and handles
 // response. It opens MJPEG-stream and copies received
 // frame to m.curImg. It closes stream if m.CloseStream()
@@ -163,7 +140,7 @@ func (m *Mjpegproxy) readpart(mpread *multipart.Reader) (*bytes.Buffer, error) {
 func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Duration) {
 	m.mjpegStream = mjpegStream
 	var lastconn time.Time
-	var img *bytes.Buffer
+	var img *multipart.Part
 	// How long will we wait after error before trying to reconnect
 	waittime := time.Second * 1
 	m.setRunning(true)
@@ -193,7 +170,6 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			time.Sleep(waittime)
 			continue
 		}
-		defer response.Body.Close()
 		reader, boundary, err := m.getmultipart(response)
 		if err != nil {
 			log.Println(m.mjpegStream, err)
@@ -201,22 +177,21 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			time.Sleep(waittime)
 			continue
 		}
-		defer reader.Close()
 		mpread := multipart.NewReader(reader, *boundary)
 		for m.GetRunning() && (time.Since(lastconn) < timeout) && err == nil {
 			m.lastConnLock.RLock()
 			lastconn = m.lastConn
 			m.lastConnLock.RUnlock()
-			img, err = m.readpart(mpread)
+			img, err = mpread.NextPart()
 			if err != nil {
 				log.Println(m.mjpegStream, err)
 				break
 			}
 			m.curImgLock.Lock()
 			m.curImg.Reset()
-			_, err = m.curImg.Write(img.Bytes())
+			_, err = m.curImg.ReadFrom(io.LimitReader(img, m.partbufsize))
 			m.curImgLock.Unlock()
-			img.Reset()
+			img.Close()
 			if err != nil {
 				log.Println(m.mjpegStream, err)
 				break
