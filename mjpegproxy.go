@@ -102,7 +102,7 @@ func (m *Mjpegproxy) getresponse(request *http.Request) (*http.Response, error) 
 	}
 	if response.StatusCode != 200 {
 		response.Body.Close()
-		errs := m.mjpegStream + " " + "Got invalid response status: " + response.Status
+		errs := "Got invalid response status: " + response.Status
 		return nil, errors.New(errs)
 	}
 	return response, nil
@@ -111,18 +111,19 @@ func (m *Mjpegproxy) getresponse(request *http.Request) (*http.Response, error) 
 func (m *Mjpegproxy) getboundary(response *http.Response) (string, error) {
 	header := response.Header.Get("Content-Type")
 	if header == "" {
-		errs := m.mjpegStream + " " + "Content-Type isn't specified!"
-		return "", errors.New(errs)
+		return "", errors.New("Content-Type isn't specified!")
 	}
 	ct, params, err := mime.ParseMediaType(header)
-	if err != nil || ct != "multipart/x-mixed-replace" {
-		errs := m.mjpegStream + " " + "Wrong Content-Type: expected multipart/x-mixed-replace!, got " + ct
+	if err != nil {
+		return "", err
+	}
+	if ct != "multipart/x-mixed-replace" {
+		errs := "Wrong Content-Type: expected multipart/x-mixed-replace, got " + ct
 		return "", errors.New(errs)
 	}
 	boundary, ok := params["boundary"]
 	if !ok {
-		errs := m.mjpegStream + " " + "No multipart boundary param in Content-Type!"
-		return "", errors.New(errs)
+		return "", errors.New("No multipart boundary param in Content-Type!")
 	}
 	// Some IP-cameras screw up boundary strings so we
 	// have to remove excessive "--" characters manually.
@@ -143,11 +144,11 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 	waittime := time.Second * 1
 	m.setRunning(true)
 	request, err := http.NewRequest("GET", mjpegStream, nil)
-	if user != "" && pass != "" {
-		request.SetBasicAuth(user, pass)
-	}
 	if err != nil {
 		log.Fatal(m.mjpegStream, err)
+	}
+	if user != "" && pass != "" {
+		request.SetBasicAuth(user, pass)
 	}
 
 	log.Println("Starting streaming from", mjpegStream)

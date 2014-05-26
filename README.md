@@ -7,8 +7,14 @@ _A stalker of [IP cameras](http://en.wikipedia.org/wiki/IP_camera)_
 
 **What is this?**
 
-A high performance web proxy for serving [MJPG](http://en.wikipedia.org/wiki/Motion_JPEG) streams to the masses.
-Done with [Go Language](http://golang.org/).
+A high performance caching web proxy for serving [MJPG](http://en.wikipedia.org/wiki/Motion_JPEG) streams to the masses.
+
+***Features***
+
+  - Easy to use.
+  - Done with [Go programming language](http://golang.org/).
+  - Compatible with [http.HandlerFunc](http://golang.org/pkg/net/http/#HandlerFunc).
+  - No unnecessary network traffic to IP-camera.
 
 IPCamera (1) <-> (1) Paparazzo.go (1) <-> (N) Users
 
