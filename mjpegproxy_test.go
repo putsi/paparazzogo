@@ -8,15 +8,13 @@ serving MJPEG-stream as JPG-images.
 package paparazzogo
 
 /*
-Test coverage: 86.4% of statements.
+Test coverage: 86.9% of statements
 */
 
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -164,7 +162,7 @@ func Test_getresponse_noconnection(t *testing.T) {
 	}
 }
 
-func Test_getmultipart_valid(t *testing.T) {
+func Test_getboundary_valid(t *testing.T) {
 	mp := NewMjpegproxy()
 	response := &http.Response{
 		Status:     "200 OK",
@@ -176,13 +174,13 @@ func Test_getmultipart_valid(t *testing.T) {
 		Body:          ioutil.NopCloser(bytes.NewBufferString(validBody)),
 		ContentLength: int64(len(validBody)),
 	}
-	_, _, err := mp.getmultipart(response)
+	_, err := mp.getboundary(response)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func Test_getmultipart_noboundary(t *testing.T) {
+func Test_getboundary_noboundary(t *testing.T) {
 	mp := NewMjpegproxy()
 	response := &http.Response{
 		Status:     "200 OK",
@@ -194,7 +192,7 @@ func Test_getmultipart_noboundary(t *testing.T) {
 		Body:          ioutil.NopCloser(bytes.NewBufferString(validBody)),
 		ContentLength: int64(len(validBody)),
 	}
-	_, _, err := mp.getmultipart(response)
+	_, err := mp.getboundary(response)
 	if err == nil {
 		t.Fatal("Unexpected nil error!")
 	}
@@ -203,7 +201,7 @@ func Test_getmultipart_noboundary(t *testing.T) {
 	}
 }
 
-func Test_getmultipart_invalid(t *testing.T) {
+func Test_getboundary_wrong(t *testing.T) {
 	mp := NewMjpegproxy()
 	response := &http.Response{
 		Status:     "200 OK",
@@ -215,17 +213,39 @@ func Test_getmultipart_invalid(t *testing.T) {
 		Body:          ioutil.NopCloser(bytes.NewBufferString(validBody)),
 		ContentLength: int64(len(validBody)),
 	}
-	_, _, err := mp.getmultipart(response)
+	_, err := mp.getboundary(response)
 	if err == nil {
 		t.Fatal("Unexpected nil error!")
 	}
-	if !strings.Contains(err.Error(), "Wrong Content-Type: expected multipart/x-mixed-replace!, got multipart/form-data") {
+	if !strings.Contains(err.Error(), "Wrong Content-Type: expected multipart/x-mixed-replace, got multipart/form-data") {
 		t.Fatalf("Wrong error: %s", err.Error())
 	}
 
 }
 
-func Test_getmultipart_noCT(t *testing.T) {
+func Test_getboundary_invalid(t *testing.T) {
+	mp := NewMjpegproxy()
+	response := &http.Response{
+		Status:     "200 OK",
+		StatusCode: 200,
+		Proto:      "HTTP/1.0",
+		Header: http.Header{
+			"Content-Type": []string{"multipart/"},
+		},
+		Body:          ioutil.NopCloser(bytes.NewBufferString(validBody)),
+		ContentLength: int64(len(validBody)),
+	}
+	_, err := mp.getboundary(response)
+	if err == nil {
+		t.Fatal("Unexpected nil error!")
+	}
+	if !strings.Contains(err.Error(), "mime: expected token after slash") {
+		t.Fatalf("Wrong error: %s", err.Error())
+	}
+
+}
+
+func Test_getboundary_noCT(t *testing.T) {
 	mp := NewMjpegproxy()
 	response := &http.Response{
 		Status:        "200 OK",
@@ -235,7 +255,7 @@ func Test_getmultipart_noCT(t *testing.T) {
 		Body:          ioutil.NopCloser(bytes.NewBufferString(validBody)),
 		ContentLength: int64(len(validBody)),
 	}
-	_, _, err := mp.getmultipart(response)
+	_, err := mp.getboundary(response)
 	if err == nil {
 		t.Fatal("Unexpected nil error!")
 	}
@@ -243,55 +263,6 @@ func Test_getmultipart_noCT(t *testing.T) {
 		t.Fatalf("Wrong error: %s", err.Error())
 	}
 
-}
-
-func Test_readpart_valid(t *testing.T) {
-	mp := NewMjpegproxy()
-	mp.setRunning(true)
-	reader := io.ReadCloser(ioutil.NopCloser(bytes.NewBufferString(validBody)))
-	mpart := multipart.NewReader(reader, boundary)
-
-	bytes, err := mp.readpart(mpart)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(bytes.String(), firstPart) {
-		t.Fatalf("Bad part: %s vs %s", bytes.String(), firstPart)
-	}
-}
-
-func Test_readpart_invalid(t *testing.T) {
-	mp := NewMjpegproxy()
-	mp.setRunning(true)
-	reader := io.ReadCloser(ioutil.NopCloser(bytes.NewBufferString(invalidBody)))
-	mpart := multipart.NewReader(reader, boundary)
-
-	_, err := mp.readpart(mpart)
-	if err == nil {
-		t.Fatal("Unexpected nil error!")
-	}
-	if !strings.Contains(err.Error(), "malformed MIME header line:") {
-		t.Fatal(err)
-	}
-}
-
-func Test_readpart_parterror(t *testing.T) {
-	mp := NewMjpegproxy()
-	mp.setRunning(true)
-	reader := io.ReadCloser(ioutil.NopCloser(bytes.NewBufferString(malformedPart)))
-	mpart := multipart.NewReader(reader, boundary)
-
-	_, err := mp.readpart(mpart)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = mp.readpart(mpart)
-	if err == nil {
-		t.Fatal("Unexpected nil error!")
-	}
-	if err.Error() != "unexpected EOF" {
-		t.Fatal(err)
-	}
 }
 
 func Test_ServeHTTP(t *testing.T) {
@@ -321,6 +292,7 @@ func Test_OpenStream_logic(t *testing.T) {
 	mp.setRunning(true)
 	mp.OpenStream(ts.URL, user, pass, time.Second)
 	defer mp.CloseStream()
+	time.Sleep(time.Second)
 	mp.conChan <- time.Now()
 	time.Sleep(time.Millisecond)
 	if !strings.Contains(mp.curImg.String(), firstPart) {

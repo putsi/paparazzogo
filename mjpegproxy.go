@@ -24,7 +24,9 @@ import (
 // A Mjpegproxy implements http.Handler	interface and generates
 // JPG-images from a MJPEG-stream.
 type Mjpegproxy struct {
-	partbufsize int64
+	partbufsize      int64
+	waittime         time.Duration
+	responseduration time.Duration
 
 	mjpegStream  string
 	curImg       bytes.Buffer
@@ -39,13 +41,15 @@ type Mjpegproxy struct {
 	handler      http.Handler
 }
 
-// NewMjpegproxy returns a new Mjpegproxy with default buffer
-// sizes.
+// NewMjpegproxy returns a new Mjpegproxy with default values.
 func NewMjpegproxy() *Mjpegproxy {
 	p := &Mjpegproxy{
-		conChan: make(chan time.Time),
 		// Max MJPEG-frame size 5Mb.
 		partbufsize: 625000,
+		// Sleep time between error and reconnecting to stream.
+		waittime: time.Second * 1,
+		// How long to use one stream response before reconnecting.
+		responseduration: time.Hour,
 	}
 	return p
 }
@@ -137,12 +141,12 @@ func (m *Mjpegproxy) getboundary(response *http.Response) (string, error) {
 // is called or if difference between current time and
 // time of last request to ServeHTTP is bigger than timeout.
 func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Duration) {
+	m.setRunning(true)
+	m.conChan = make(chan time.Time)
 	m.mjpegStream = mjpegStream
 	var lastconn time.Time
 	var img *multipart.Part
-	// How long will we wait after error before trying to reconnect
-	waittime := time.Second * 1
-	m.setRunning(true)
+
 	request, err := http.NewRequest("GET", mjpegStream, nil)
 	if err != nil {
 		log.Fatal(m.mjpegStream, err)
@@ -150,6 +154,10 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 	if user != "" && pass != "" {
 		request.SetBasicAuth(user, pass)
 	}
+	var response *http.Response
+	var boundary string
+	var mpread *multipart.Reader
+	var starttime time.Time
 
 	log.Println("Starting streaming from", mjpegStream)
 
@@ -158,26 +166,30 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 		m.lastConnLock.Lock()
 		m.lastConn = lastconn
 		m.lastConnLock.Unlock()
-
 		if !m.GetRunning() {
 			continue
 		}
-		var response *http.Response
+
 		response, err = m.getresponse(request)
 		if err != nil {
 			log.Println(m.mjpegStream, err)
-			time.Sleep(waittime)
+			time.Sleep(m.waittime)
 			continue
 		}
-		boundary, err := m.getboundary(response)
+		starttime = time.Now()
+		boundary, err = m.getboundary(response)
+
 		if err != nil {
 			log.Println(m.mjpegStream, err)
 			response.Body.Close()
-			time.Sleep(waittime)
+			time.Sleep(m.waittime)
 			continue
 		}
-		mpread := multipart.NewReader(response.Body, boundary)
+		mpread = multipart.NewReader(response.Body, boundary)
 		for m.GetRunning() && (time.Since(lastconn) < timeout) && err == nil {
+			if time.Since(starttime) > m.responseduration {
+				break
+			}
 			m.lastConnLock.RLock()
 			lastconn = m.lastConn
 			m.lastConnLock.RUnlock()
@@ -197,7 +209,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			}
 		}
 		response.Body.Close()
-		time.Sleep(waittime)
+		time.Sleep(m.waittime)
 	}
 	log.Println("Stopped streaming from", mjpegStream)
 }

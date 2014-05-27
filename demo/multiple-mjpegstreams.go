@@ -21,8 +21,7 @@ func main() {
 	// Streaming will be reopened after next request.
 	timeout := 30 * time.Second
 	mjpegStream1 := "http://westunioncam.studentaffairs.duke.edu/mjpg/video.mjpg"
-	mjpegStream2 := "http://194.117.170.14/axis-cgi/mjpg/video.cgi?camera=1"
-	//mjpegStream2 := "http://194.117.170.14/axis-cgi/mjpg/video.cgi?camera=1&fps=4"
+	mjpegStream2 := "http://194.117.170.14/axis-cgi/mjpg/video.cgi?camera=1&fps=4"
 
 	mjpegHandler1 := paparazzogo.NewMjpegproxy()
 	mjpegHandler1.OpenStream(mjpegStream1, user, pass, timeout)
