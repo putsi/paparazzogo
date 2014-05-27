@@ -1,31 +1,37 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
         "http://www.w3.org/TR/html4/strict.dtd">
-	<head>
-		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-		<title>Paparazzo.go Demo</title>
-                <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js" type="text/javascript"></script>
-                <script type="text/javascript">
-                        $(document.images).ready(function() {
-                                // Active camera will refresh every 1 seconds
-                                var TIMEOUT = 1000;
-                                var refreshInterval = setInterval(function() {
-                                        var ignorecache = Math.round(new Date().getTime());
-                                        $('img#camera1').attr('src', 'http://127.0.0.1:8080/img1.jpg#e' + ignorecache);
-                                        $('img#camera2').attr('src', 'http://127.0.0.1:8080/img2.jpg#e' + ignorecache);
-                                }, TIMEOUT);
-                        });
-                </script>
-        </head>
-        <body>
-                <div>
-                        <h1>Paparazzo.go - Demo of multiple mjpeg-streams</h1>
-                </div>
-	<div>
-                <img src="" id="camera1" alt="Loading image 1!" height="360" width="640">
-                <img src="" id="camera2" alt="Loading image 2!" height="360" width="640">
-	</div>
-        </body>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Paparazzo.go Demo</title>
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js" type="text/javascript"></script>
+    <script type="text/javascript">
+        // How long will we wait after fetching a new image.
+        var INTERVAL = 500;
+
+        function loadImage() {
+            setTimeout(function () {
+                var ignorecache = Math.round(new Date().getTime());
+                $('img#camera1').attr('src', 'http://127.0.0.1:8080/img1.jpg#e' + ignorecache);
+                $('img#camera2').attr('src', 'http://127.0.0.1:8080/img2.jpg#e' + ignorecache);
+            });
+        }
+
+        function imageLoaded() {
+            setTimeout("loadImage()", INTERVAL);
+        }
+        $(document).ready(loadImage(), INTERVAL);
+    </script>
+</head>
+
+<body>
+    <div>
+        <h1>Paparazzo.go - Demo of multiple mjpeg-streams</h1>
+    </div>
+    <div>
+        <img src="" id="camera1" alt="Loading image 1!" height="360" width="640" onload="imageLoaded()" onerror="imageLoaded()">
+        <img src="" id="camera2" alt="Loading image 2!" height="360" width="640" onload="imageLoaded()" onerror="imageLoaded()">
+    </div>
+</body>
+
 </html>
-
-
-
