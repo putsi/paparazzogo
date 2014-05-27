@@ -11,7 +11,7 @@
 
         function loadImage() {
             setTimeout(function () {
-                var ignorecache = Math.round(new Date().getTime());
+                var ignorecache = new Date().getTime();
                 $('img#camera1').attr('src', 'http://127.0.0.1:8080/img1.jpg#e' + ignorecache);
                 $('img#camera2').attr('src', 'http://127.0.0.1:8080/img2.jpg#e' + ignorecache);
             });

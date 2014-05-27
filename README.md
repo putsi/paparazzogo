@@ -17,6 +17,7 @@ A high performance caching web proxy for serving [MJPG](http://en.wikipedia.org/
   - No unnecessary network traffic to IP-camera.
   - Serves MJPEG-stream as single jpeg-images.
   - Works with every browser.
+  - Supports client-side caching.
 
 IPCamera (1) <-> (1) Paparazzo.go (1) <-> (N) Users
 
@@ -45,6 +46,26 @@ go get github.com/putsi/paparazzogo
 cd $GOPATH/src/github.com/putsi/paparazzogo/demo
 go run demo.go
 open demo.html
+```
+
+Customization of settings:
+```
+mjpegHandler := &paparazzogo.Mjpegproxy{
+	// Max MJPEG-frame size (5Mb by default).
+	partbufsize: 625000,
+
+	// Sleep time between error and reconnecting to stream (one second by default).
+	waittime: time.Second * 1,
+
+	// How long to use one stream response before reconnecting (one hour by default).
+	responseduration: time.Hour,
+
+	// Caching enables/disables support for client-side caching
+	// of jpg-files. If enabled, saves bandwidth.
+	// If disabled, allows more than one frame per second.
+	// Enabled by default.
+	caching: true,
+}
 ```
 
 **See more examples in demo-folder.**

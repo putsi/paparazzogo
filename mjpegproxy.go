@@ -226,7 +226,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			// buf is an additional buffer that allows
 			// serving curImg while loading next part.
 			buf.Reset()
-			_, err = buf.ReadFrom(img)
+			_, err = buf.ReadFrom(io.LimitReader(img, m.partbufsize))
 			if err != nil {
 				log.Println(m.mjpegStream, err)
 				break
