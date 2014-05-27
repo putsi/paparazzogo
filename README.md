@@ -15,6 +15,8 @@ A high performance caching web proxy for serving [MJPG](http://en.wikipedia.org/
   - Done with [Go programming language](http://golang.org/).
   - Compatible with [http.HandlerFunc](http://golang.org/pkg/net/http/#HandlerFunc).
   - No unnecessary network traffic to IP-camera.
+  - Serves MJPEG-stream as single jpeg-images.
+  - Works with every browser.
 
 IPCamera (1) <-> (1) Paparazzo.go (1) <-> (N) Users
 

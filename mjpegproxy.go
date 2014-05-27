@@ -58,13 +58,20 @@ func NewMjpegproxy() *Mjpegproxy {
 // as JPG. It also reopens MJPEG-stream
 // if it was closed by idle timeout.
 func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	buf := bytes.Buffer{}
+	// No caching for HTTP 1.1.
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	// No caching for HTTP 1.0.
+	w.Header().Set("Pragma", "no-cache")
+	// No caching for proxies
+	w.Header().Set("Expires", "0")
+	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 
+	buf := bytes.Buffer{}
 	m.curImgLock.RLock()
 	buf.Write(m.curImg.Bytes())
 	m.curImgLock.RUnlock()
-
 	w.Write(buf.Bytes())
+
 	select {
 	case m.conChan <- time.Now():
 	default:

@@ -9,9 +9,9 @@
                                 // Active camera will refresh every 1 seconds
                                 var TIMEOUT = 1000;
                                 var refreshInterval = setInterval(function() {
-                                        var random = Math.floor(Math.random() * Math.pow(2, 31));
-                                        $('img#camera1').attr('src', 'http://127.0.0.1:8080/img1.jpg?i=' + Math.random());
-                                        $('img#camera2').attr('src', 'http://127.0.0.1:8080/img2.jpg?i=' + Math.random());
+                                        var ignorecache = Math.round(new Date().getTime());
+                                        $('img#camera1').attr('src', 'http://127.0.0.1:8080/img1.jpg#e' + ignorecache);
+                                        $('img#camera2').attr('src', 'http://127.0.0.1:8080/img2.jpg#e' + ignorecache);
                                 }, TIMEOUT);
                         });
                 </script>
