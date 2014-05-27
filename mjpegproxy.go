@@ -165,6 +165,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 	var boundary string
 	var mpread *multipart.Reader
 	var starttime time.Time
+	buf := new(bytes.Buffer)
 
 	log.Println("Starting streaming from", mjpegStream)
 
@@ -207,9 +208,13 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 				log.Println(m.mjpegStream, err)
 				break
 			}
+			// buf is an additional buffer that allows
+			// serving curImg while loading next part.
+			buf.Reset()
+			_, err = buf.ReadFrom(img)
 			m.curImgLock.Lock()
 			m.curImg.Reset()
-			_, err = m.curImg.ReadFrom(img)
+			_, err = m.curImg.ReadFrom(buf)
 			m.curImgLock.Unlock()
 			img.Close()
 			if err != nil {
