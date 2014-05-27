@@ -190,9 +190,11 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			if time.Since(starttime) > m.responseduration {
 				break
 			}
-			m.lastConnLock.RLock()
-			lastconn = m.lastConn
-			m.lastConnLock.RUnlock()
+			if time.Since(lastconn) > timeout/2 {
+				m.lastConnLock.RLock()
+				lastconn = m.lastConn
+				m.lastConnLock.RUnlock()
+			}
 			img, err = mpread.NextPart()
 			if err != nil {
 				log.Println(m.mjpegStream, err)
