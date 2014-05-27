@@ -27,6 +27,7 @@ type Mjpegproxy struct {
 	partbufsize      int64
 	waittime         time.Duration
 	responseduration time.Duration
+	caching          bool
 
 	mjpegStream  string
 	curImg       bytes.Buffer
@@ -34,6 +35,8 @@ type Mjpegproxy struct {
 	conChan      chan time.Time
 	lastConn     time.Time
 	lastConnLock sync.RWMutex
+	lastModified time.Time
+	lastModLock  sync.RWMutex
 	running      bool
 	runningLock  sync.RWMutex
 	l            net.Listener
@@ -50,6 +53,10 @@ func NewMjpegproxy() *Mjpegproxy {
 		waittime: time.Second * 1,
 		// How long to use one stream response before reconnecting.
 		responseduration: time.Hour,
+		// Caching enables/disables support for client-side caching
+		// of jpg-files. If enabled, saves bandwidth.
+		// If disabled, allows more than one frame per second.
+		caching: true,
 	}
 	return p
 }
@@ -58,26 +65,34 @@ func NewMjpegproxy() *Mjpegproxy {
 // as JPG. It also reopens MJPEG-stream
 // if it was closed by idle timeout.
 func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	// No caching for HTTP 1.1.
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	// No caching for HTTP 1.0.
-	w.Header().Set("Pragma", "no-cache")
-	// No caching for proxies
-	w.Header().Set("Expires", "0")
-	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
-
-	buf := bytes.Buffer{}
-	m.curImgLock.RLock()
-	buf.Write(m.curImg.Bytes())
-	m.curImgLock.RUnlock()
-	w.Write(buf.Bytes())
-
 	select {
 	case m.conChan <- time.Now():
 	default:
 		m.lastConnLock.Lock()
 		m.lastConn = time.Now()
 		m.lastConnLock.Unlock()
+	}
+	m.curImgLock.RLock()
+	reader := bytes.NewReader(m.curImg.Bytes())
+	m.curImgLock.RUnlock()
+	if reader == nil {
+		log.Println(m.mjpegStream, "ServeHTTP could not create bytes.Reader!")
+		return
+	}
+	if !m.caching {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+		reader.WriteTo(w)
+	} else {
+		m.lastModLock.RLock()
+		modtime := m.lastModified
+		m.lastModLock.RUnlock()
+		if modtime.String() == "" {
+			modtime = time.Now()
+		}
+		http.ServeContent(w, req, "img.jpg", modtime, reader)
 	}
 }
 
@@ -212,6 +227,15 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			// serving curImg while loading next part.
 			buf.Reset()
 			_, err = buf.ReadFrom(img)
+			if err != nil {
+				log.Println(m.mjpegStream, err)
+				break
+			}
+			if m.caching {
+				m.lastModLock.Lock()
+				m.lastModified = time.Now().UTC()
+				m.lastModLock.Unlock()
+			}
 			m.curImgLock.Lock()
 			m.curImg.Reset()
 			_, err = m.curImg.ReadFrom(buf)
