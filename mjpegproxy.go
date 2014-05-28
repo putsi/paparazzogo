@@ -72,9 +72,12 @@ func (m *Mjpegproxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		m.lastConn = time.Now()
 		m.lastConnLock.Unlock()
 	}
+	buf := bytes.Buffer{}
 	m.curImgLock.RLock()
-	reader := bytes.NewReader(m.curImg.Bytes())
+	buf.Write(m.curImg.Bytes())
 	m.curImgLock.RUnlock()
+
+	reader := bytes.NewReader(buf.Bytes())
 	if reader == nil {
 		log.Println(m.mjpegStream, "ServeHTTP could not create bytes.Reader!")
 		return
@@ -228,6 +231,7 @@ func (m *Mjpegproxy) openstream(mjpegStream, user, pass string, timeout time.Dur
 			buf.Reset()
 			_, err = buf.ReadFrom(io.LimitReader(img, m.partbufsize))
 			if err != nil {
+				img.Close()
 				log.Println(m.mjpegStream, err)
 				break
 			}
