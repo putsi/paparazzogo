@@ -56,7 +56,7 @@ func NewMjpegproxy() *Mjpegproxy {
 		// Caching enables/disables support for client-side caching
 		// of jpg-files. If enabled, saves bandwidth.
 		// If disabled, allows more than one frame per second.
-		caching: true,
+		caching: false,
 	}
 	return p
 }
