@@ -294,7 +294,7 @@ func Test_OpenStream_logic(t *testing.T) {
 	defer mp.CloseStream()
 	time.Sleep(time.Second)
 	mp.conChan <- time.Now()
-	time.Sleep(time.Millisecond)
+	time.Sleep(time.Millisecond*50)
 	if !strings.Contains(mp.curImg.String(), firstPart) {
 		t.Fatalf("Wrong response: expected %s, got %s", firstPart, mp.curImg.String())
 	}
